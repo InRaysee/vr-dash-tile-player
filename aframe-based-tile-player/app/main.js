@@ -26,6 +26,7 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
     $scope.playerContentScore = [];  // Data from monitor
     $scope.playerPastDownloadingQuality = [];  // Data from monitor's playerDownloadingQuality
     $scope.playerCatchUp = [];  // Data from playback controller
+    $scope.playerDivation = [];  // Data from computing QoE
 
     $scope.playerBitrateList = [];  // Data from bitrate list
     $scope.requestList = [];  // Data from all HTTPRequests
@@ -137,6 +138,7 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
     $scope.a1QOE = 0.7;  // [For computing QoE] Influence of the quality of Zone 1
     $scope.a2QOE = 0.3;  // [For computing QoE] Influence of the quality of Zone 2
     $scope.a3QOE = 0.0;  // [For computing QoE] Influence of the quality of Zone 3
+    $scope.content_curTile_bias = 0.1;  // [For computing QoE] bias of tiles for computing content score
     $scope.availableStreams = [  // [For setting up the media source] All the available preset media sources
         {
             name:"LVOD",
@@ -524,8 +526,8 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
                     $scope.playerAverageThroughput[$scope.playerCount] = $scope.players[$scope.playerCount].getAverageThroughput("video");
                     $scope.playerTime[$scope.playerCount] = $scope.players[$scope.playerCount].time();
                     $scope.playerDownloadingQuality[$scope.playerCount] = $scope.players[$scope.playerCount].getQualityFor("video");
-                    $scope.playerFOVScore[$scope.playerCount] = 0;
-                    $scope.playerContentScore[$scope.playerCount] = 0;
+                    $scope.playerFOVScore[$scope.playerCount] = NaN;
+                    $scope.playerContentScore[$scope.playerCount] = NaN;
                     $scope.playerBitrateList[$scope.playerCount] = [];
                     $scope.playerCatchUp[$scope.playerCount] = false;
 
@@ -631,7 +633,10 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
                 if (requestTimeIndex > requestFinishTime) {
                     TotalTimeInAnInterval -= (requestTimeIndex - requestFinishTime);
                 }
-                requestTimeIndex = requestResponseTime;						
+                // More the time index forward
+                if (requestTimeIndex > requestResponseTime) {
+                    requestTimeIndex = requestResponseTime;
+                }
             }
             requestListIndex--;
         }
@@ -653,12 +658,11 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
             return;
         }
         let pretotalQOE = 0;  // = Quality - miu * Stalls - lambda * Quality switches
-        let previewerQOE = 0;  // = [a1 a2 a3] * (Quality - miu * Stalls - lambda * Quality switches)
-        let precontentQOE = 0;  // = [a1 a2 a3] * (Quality - miu * Stalls - lambda * Quality switches + omega * Content score)
+        let previewerQOE = 0;  // = FOVScore * (Quality - miu * Stalls - lambda * Quality switches)
+        let precontentQOE = 0;  // = FOVScore * ContentScore * (Quality - miu * Stalls - lambda * Quality switches + omega * Content score)
         for (let i = 0; i < $scope.playerCount; i++) {
-            ////////////////////////////////// Regardless of stall, only totalQOE //////////////////////////////////
-            let playerSettings = $scope.players[i].getSettings().info;
             // Compute divation between angle of view and location of tile
+            let playerSettings = $scope.players[i].getSettings().info;
             let r = Math.sqrt(playerSettings.location.x * playerSettings.location.x + playerSettings.location.y * playerSettings.location.y + playerSettings.location.z * playerSettings.location.z);
             let tile_theta = Math.acos(playerSettings.location.y / (r == 0 ? 1 : r));
             let tile_phi = Math.atan(playerSettings.location.x / (playerSettings.location.z == 0 ? 1 : playerSettings.location.z));
@@ -671,15 +675,48 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
             let view_z = Math.sin(view_theta) * Math.cos(view_phi);
             let view_x = Math.sin(view_theta) * Math.sin(view_phi);
             let view_y = Math.cos(view_theta);
-            let divation = Math.acos((tile_z * view_z + tile_x * view_x + tile_y * view_y) / (Math.sqrt(tile_z * tile_z + tile_x * tile_x + tile_y * tile_y) * Math.sqrt(view_z * view_z + view_x * view_x + view_y * view_y))) * (180 / Math.PI);
+            $scope.playerDivation[i] = Math.acos((tile_z * view_z + tile_x * view_x + tile_y * view_y) / (Math.sqrt(tile_z * tile_z + tile_x * tile_x + tile_y * tile_y) * Math.sqrt(view_z * view_z + view_x * view_x + view_y * view_y))) * (180 / Math.PI);
+        }
+        for (let i = 0; i < $scope.playerCount; i++) {
+            // Computing FOV score
+            $scope.playerFOVScore[i] = 100 * (($scope.playerDivation[i] - Math.min.apply(Math,$scope.playerDivation)) / (Math.max.apply(Math,$scope.playerDivation) - Math.min.apply(Math,$scope.playerDivation)));
+            // Computing content score
+            let info = $scope.players[i].getSettings().info;
+            if ($scope.ssresults) {
+                // gains from current segment's level
+                let currentTime = parseInt($scope.playerTime[i] + $scope.playerBufferLength[i]);
+                let currentIndex = parseInt(currentTime / info.duration) + 1;
+                let currentIndexString = info.face.toString() + "_" + (info.row * $scope.contents.col + info.col).toString() + "_" + currentIndex.toString();
+                if ($scope.ssresults[currentIndexString] != NaN && $scope.ssresults['maximum'] != NaN && $scope.ssresults['minimum'] != NaN) {
+                    let currentResult = $scope.ssresults[currentIndexString];
+                    let MaximumResult = $scope.ssresults['maximum'];
+                    let MinimumResult = $scope.ssresults['minimum'];
+                    let RankingResult = (currentResult - MinimumResult) / (MaximumResult - MinimumResult);
+                    // gains from tile's level
+                    let curTileIndexString = info.face.toString() + "_" + (info.row * $scope.contents.col + info.col).toString();
+                    if ($scope.ssresults[curTileIndexString] != NaN || $scope.ssresults['average'] != NaN) {
+                        let curTileResult = $scope.ssresults[curTileIndexString];
+                        let AverageResult = $scope.ssresults['average'];
+                        if (curTileResult >= AverageResult) {
+                            RankingResult = Math.min(RankingResult + $scope.content_curTile_bias, 1);
+                        } else {
+                            RankingResult = Math.max(RankingResult - $scope.content_curTile_bias, 0);
+                        }
+                    }
+                    $scope.playerContentScore[i] = RankingResult.toFixed(2) * 100;
+                }
+            }
+            ////////////////////////////////// Regardless of stall, only totalQOE //////////////////////////////////
             switch ($scope.qQOE) {
                 case 'linear':
                     pretotalQOE = pretotalQOE + ($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][0].bitrate) - $scope.lambdaQOE * Math.abs($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][$scope.playerPastDownloadingQuality[i]].bitrate);
-                    previewerQOE = previewerQOE + (divation < 61 ? $scope.a1QOE : divation < 121 ? $scope.a2QOE : $scope.a3QOE) * (($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][0].bitrate) - $scope.lambdaQOE * Math.abs($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][$scope.playerPastDownloadingQuality[i]].bitrate));
+                    previewerQOE = previewerQOE + $scope.playerFOVScore[i] * (($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][0].bitrate) - $scope.lambdaQOE * Math.abs($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][$scope.playerPastDownloadingQuality[i]].bitrate));
+                    precontentQOE = precontentQOE + $scope.playerFOVScore[i] * $scope.playerContentScore[i] * (($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][0].bitrate) - $scope.lambdaQOE * Math.abs($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][$scope.playerPastDownloadingQuality[i]].bitrate));
                     break;
                 case 'log':
                     pretotalQOE = pretotalQOE + Math.log(($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][0].bitrate) + 1) - $scope.lambdaQOE * Math.abs(Math.log($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate + 1) - Math.log($scope.playerBitrateList[i][$scope.playerPastDownloadingQuality[i]].bitrate + 1));
-                    previewerQOE = previewerQOE + (divation < 61 ? $scope.a1QOE : divation < 121 ? $scope.a2QOE : $scope.a3QOE) * (Math.log(($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][0].bitrate) + 1) - $scope.lambdaQOE * Math.abs(Math.log($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate + 1) - Math.log($scope.playerBitrateList[i][$scope.playerPastDownloadingQuality[i]].bitrate + 1)));
+                    previewerQOE = previewerQOE + $scope.playerFOVScore[i] * (Math.log(($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][0].bitrate) + 1) - $scope.lambdaQOE * Math.abs(Math.log($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate + 1) - Math.log($scope.playerBitrateList[i][$scope.playerPastDownloadingQuality[i]].bitrate + 1)));
+                    precontentQOE = precontentQOE + $scope.playerFOVScore[i] * $scope.playerContentScore[i] * (Math.log(($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate - $scope.playerBitrateList[i][0].bitrate) + 1) - $scope.lambdaQOE * Math.abs(Math.log($scope.playerBitrateList[i][$scope.playerDownloadingQuality[i]].bitrate + 1) - Math.log($scope.playerBitrateList[i][$scope.playerPastDownloadingQuality[i]].bitrate + 1)));
                     break;
                 default:
                     break;

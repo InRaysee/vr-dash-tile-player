@@ -56,8 +56,6 @@ function FOVContentRuleClass() {
         }
         // Compute the priorite according to FOV and Content
         var priorite_FOVContent = Math.min(FOV_weight * priorite_FOV + content_weight * priorite_Content, 100);
-        $scope.playerFOVScore[info.count] = priorite_FOV;
-        $scope.playerContentScore[info.count] = priorite_Content;
 
         // Mapping a bitrate from bitrate list using priorite
         const bitrateList = abrController.getBitrateList(mediaInfo);  // List of all the selectable bitrates (A - Z)
@@ -85,8 +83,8 @@ function FOVContentRuleClass() {
             while (availableThroughput >= 0 && switchQuality > 0 && availableThroughput < switchBitrate) {
                 switchQuality = Math.max(switchQuality - 1, 0);
                 switchBitrate = bitrateList[switchQuality].bitrate;
+                console.log("The bitrate of video_" + info.count.toString() + " changes to " + switchBitrate.toString() + " bps, available throughput is " + availableThroughput.toString() + " bps.");
             }
-            console.log([info.count, $scope.totalThroughput, currentBitrate, availableThroughput, switchBitrate]);
         }
 
         // Ask to switch to the bitrate according to FOV and Content
@@ -102,6 +100,14 @@ function FOVContentRuleClass() {
         if (!info) {
             console.log("Lack of info when computing FOV-based qualities!!!");
             return 0;
+        }
+
+        if ($scope.playerFOVScore && $scope.playerFOVScore[info.count]) {
+            return $scope.playerFOVScore[info.count];
+        }
+
+        if ($scope.playerDivation && $scope.playerDivation[info.count]) {
+            return 100 * (($scope.playerDivation[info.count] - Math.min($scope.playerDivation)) / (Math.max($scope.playerDivation) - Math.min($scope.playerDivation))); 
         }
 
         if ($scope.lat == NaN || $scope.lon == NaN || $scope.lat > 90 || $scope.lat < -90 || $scope.lon > 360 || $scope.lon < 0) {
@@ -249,6 +255,10 @@ function FOVContentRuleClass() {
         if (!info) {
             console.log("Lack of info when computing content-based qualities!!!");
             return 0;
+        }
+
+        if ($scope.playerContentScore && $scope.playerContentScore[info.count]) {
+            return $scope.playerContentScore[info.count];
         }
 
         if (!$scope.ssresults) {

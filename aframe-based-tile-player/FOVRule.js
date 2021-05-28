@@ -32,7 +32,6 @@ function FOVRuleClass() {
         // Compute the bitrate according to FOV
         var info = abrController.getSettings().info;
         var priorite = computeQualities(info);  // From 0 to 100
-        $scope.playerFOVScore[info.count] = priorite;
 
         // Ask to switch to the bitrate according to FOV
         switchRequest.quality = 0;
@@ -55,6 +54,14 @@ function FOVRuleClass() {
         if (!info) {
             console.log("Lack of info when computing FOV-based qualities!!!");
             return 0;
+        }
+
+        if ($scope.playerFOVScore && $scope.playerFOVScore[info.count]) {
+            return $scope.playerFOVScore[info.count];
+        }
+
+        if ($scope.playerDivation && $scope.playerDivation[info.count]) {
+            return 100 * (($scope.playerDivation[info.count] - Math.min($scope.playerDivation)) / (Math.max($scope.playerDivation) - Math.min($scope.playerDivation))); 
         }
 
         if ($scope.lat == NaN || $scope.lon == NaN || $scope.lat > 90 || $scope.lat < -90 || $scope.lon > 360 || $scope.lon < 0) {
