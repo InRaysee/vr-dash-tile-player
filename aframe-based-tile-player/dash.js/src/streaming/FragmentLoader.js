@@ -42,6 +42,7 @@ function FragmentLoader(config) {
     const events = config.events;
     const urlUtils = config.urlUtils;
     const errors = config.errors;
+    const streamId = config.streamId;
 
     let instance,
         urlLoader;
@@ -53,7 +54,6 @@ function FragmentLoader(config) {
             dashMetrics: config.dashMetrics,
             mediaPlayerModel: config.mediaPlayerModel,
             requestModifier: config.requestModifier,
-            useFetch: config.settings.get().streaming.lowLatencyEnabled,
             urlUtils: urlUtils,
             constants: Constants,
             boxParser: config.boxParser,
@@ -103,7 +103,8 @@ function FragmentLoader(config) {
                 progress: function (event) {
                     eventBus.trigger(events.LOADING_PROGRESS, {
                         request: request,
-                        stream: event.stream
+                        stream: event.stream,
+                        streamId
                     });
                     if (event.data) {
                         eventBus.trigger(events.LOADING_DATA_PROGRESS, {

@@ -33,12 +33,22 @@ import FactoryMaker from '../../core/FactoryMaker';
 import EventBus from '../../core/EventBus';
 import Events from '../../core/events/Events';
 import Debug from '../../core/Debug';
+import Constants from '../constants/Constants';
+
+
+const READY_STATES_TO_EVENT_NAMES = new Map([
+    [Constants.VIDEO_ELEMENT_READY_STATES.HAVE_METADATA, 'loadedmetadata'],
+    [Constants.VIDEO_ELEMENT_READY_STATES.HAVE_CURRENT_DATA, 'loadeddata'],
+    [Constants.VIDEO_ELEMENT_READY_STATES.HAVE_FUTURE_DATA, 'canplay'],
+    [Constants.VIDEO_ELEMENT_READY_STATES.HAVE_ENOUGH_DATA, 'canplaythrough']
+]);
 
 function VideoModel() {
 
     let instance,
         logger,
         element,
+        _currentTime,
         TTMLRenderingDiv,
         previousPlaybackRate;
 
@@ -50,6 +60,7 @@ function VideoModel() {
 
     function setup() {
         logger = Debug(context).getInstance().getLogger(instance);
+        _currentTime = NaN;
     }
 
     function initialize() {
@@ -67,9 +78,9 @@ function VideoModel() {
         }
     }
 
-    function setPlaybackRate(value) {
+    function setPlaybackRate(value, ignoreReadyState = false) {
         if (!element) return;
-        if (element.readyState <= 2 && value > 0) {
+        if (!ignoreReadyState && element.readyState <= 2 && value > 0) {
             // If media element hasn't loaded enough data to play yet, wait until it has
             element.addEventListener('canplay', onPlaybackCanPlay);
         } else {
@@ -79,29 +90,35 @@ function VideoModel() {
 
     //TODO Move the DVR window calculations from MediaPlayer to Here.
     function setCurrentTime(currentTime, stickToBuffered) {
-        if (element) {
-            //_currentTime = currentTime;
+        _currentTime = currentTime;
+        waitForReadyState(Constants.VIDEO_ELEMENT_READY_STATES.HAVE_METADATA, () => {
+            if (element) {
+                // We don't set the same currentTime because it can cause firing unexpected Pause event in IE11
+                // providing playbackRate property equals to zero.
+                if (element.currentTime === _currentTime) {
+                    _currentTime = NaN;
+                    return;
+                }
 
-            // We don't set the same currentTime because it can cause firing unexpected Pause event in IE11
-            // providing playbackRate property equals to zero.
-            if (element.currentTime == currentTime) return;
-
-            // TODO Despite the fact that MediaSource 'open' event has been fired IE11 cannot set videoElement.currentTime
-            // immediately (it throws InvalidStateError). It seems that this is related to videoElement.readyState property
-            // Initially it is 0, but soon after 'open' event it goes to 1 and setting currentTime is allowed. Chrome allows to
-            // set currentTime even if readyState = 0.
-            // setTimeout is used to workaround InvalidStateError in IE11
-            try {
-                currentTime = stickToBuffered ? stickTimeToBuffered(currentTime) : currentTime;
-                element.currentTime = currentTime;
-            } catch (e) {
-                if (element.readyState === 0 && e.code === e.INVALID_STATE_ERR) {
-                    setTimeout(function () {
-                        element.currentTime = currentTime;
-                    }, 400);
+                // TODO Despite the fact that MediaSource 'open' event has been fired IE11 cannot set videoElement.currentTime
+                // immediately (it throws InvalidStateError). It seems that this is related to videoElement.readyState property
+                // Initially it is 0, but soon after 'open' event it goes to 1 and setting currentTime is allowed. Chrome allows to
+                // set currentTime even if readyState = 0.
+                // setTimeout is used to workaround InvalidStateError in IE11
+                try {
+                    _currentTime = stickToBuffered ? stickTimeToBuffered(_currentTime) : _currentTime;
+                    element.currentTime = _currentTime;
+                    _currentTime = NaN;
+                } catch (e) {
+                    if (element.readyState === 0 && e.code === e.INVALID_STATE_ERR) {
+                        setTimeout(function () {
+                            element.currentTime = _currentTime;
+                            _currentTime = NaN;
+                        }, 400);
+                    }
                 }
             }
-        }
+        });
     }
 
     function stickTimeToBuffered(time) {
@@ -189,26 +206,16 @@ function VideoModel() {
     }
 
     function addStalledStream(type) {
-        let event;
 
         if (type === null || !element || element.seeking || stalledStreams.indexOf(type) !== -1) {
             return;
         }
 
         stalledStreams.push(type);
-        if (element && stalledStreams.length === 1) {
-            // Halt playback until nothing is stalled.
-            event = document.createEvent('Event');
-            event.initEvent('waiting', true, false);
-            previousPlaybackRate = element.playbackRate;
-            setPlaybackRate(0);
-            element.dispatchEvent(event);
-        }
     }
 
     function removeStalledStream(type) {
         let index = stalledStreams.indexOf(type);
-        let event;
 
         if (type === null) {
             return;
@@ -216,15 +223,7 @@ function VideoModel() {
         if (index !== -1) {
             stalledStreams.splice(index, 1);
         }
-        // If nothing is stalled resume playback.
-        if (element && isStalled() === false && element.playbackRate === 0) {
-            setPlaybackRate(previousPlaybackRate || 1);
-            if (!element.paused) {
-                event = document.createEvent('Event');
-                event.initEvent('playing', true, false);
-                element.dispatchEvent(event);
-            }
-        }
+
     }
 
     function stallStream(type, isStalled) {
@@ -245,7 +244,9 @@ function VideoModel() {
     }
 
     function getPlaybackQuality() {
-        if (!element) { return null; }
+        if (!element) {
+            return null;
+        }
         let hasWebKit = ('webkitDroppedFrameCount' in element) && ('webkitDecodedFrameCount' in element);
         let hasQuality = ('getVideoPlaybackQuality' in element);
         let result = null;
@@ -290,11 +291,11 @@ function VideoModel() {
     }
 
     function isSeeking() {
-        return element ? element.seeking : null;
+        return element ? (element.seeking || !isNaN(_currentTime)) : null;
     }
 
     function getTime() {
-        return element ? element.currentTime : null;
+        return element ? (!isNaN(_currentTime) ? _currentTime : element.currentTime) : null;
     }
 
     function getPlaybackRate() {
@@ -365,7 +366,7 @@ function VideoModel() {
                 //label parameter could be a number (due to adaptationSet), but label, the attribute of textTrack, is a string => to modify...
                 //label could also be undefined (due to adaptationSet)
                 if (element.textTracks[i].kind === kind && (label ? element.textTracks[i].label == label : true) &&
-                   element.textTracks[i].language === lang && element.textTracks[i].isTTML === isTTML && element.textTracks[i].isEmbedded === isEmbedded) {
+                    element.textTracks[i].language === lang && element.textTracks[i].isTTML === isTTML && element.textTracks[i].isEmbedded === isEmbedded) {
                     return element.textTracks[i];
                 }
             }
@@ -406,43 +407,65 @@ function VideoModel() {
         }
     }
 
+    function waitForReadyState(targetReadyState, callback) {
+        if (targetReadyState === Constants.VIDEO_ELEMENT_READY_STATES.HAVE_NOTHING ||
+            getReadyState() >= targetReadyState) {
+            callback();
+        } else {
+            // wait for the appropriate callback before checking again
+            const event = READY_STATES_TO_EVENT_NAMES.get(targetReadyState);
+            _listenOnce(event, callback);
+        }
+    }
+
+    function _listenOnce(event, callback) {
+        const func = () => {
+            // Stop listening to this event.
+            removeEventListener(event, func);
+            // Call the original listener.
+            callback(event);
+        };
+        addEventListener(event, func);
+    }
+
     instance = {
-        initialize: initialize,
-        setCurrentTime: setCurrentTime,
-        play: play,
-        isPaused: isPaused,
-        pause: pause,
+        initialize,
+        setCurrentTime,
+        play,
+        isPaused,
+        pause,
         isStalled,
-        isSeeking: isSeeking,
-        getTime: getTime,
-        getPlaybackRate: getPlaybackRate,
-        setPlaybackRate: setPlaybackRate,
-        getPlayedRanges: getPlayedRanges,
-        getEnded: getEnded,
-        setStallState: setStallState,
-        getElement: getElement,
-        setElement: setElement,
-        setSource: setSource,
-        getSource: getSource,
-        getTTMLRenderingDiv: getTTMLRenderingDiv,
-        setTTMLRenderingDiv: setTTMLRenderingDiv,
-        getPlaybackQuality: getPlaybackQuality,
-        addEventListener: addEventListener,
-        removeEventListener: removeEventListener,
-        getReadyState: getReadyState,
-        getBufferRange: getBufferRange,
-        getClientWidth: getClientWidth,
-        getClientHeight: getClientHeight,
-        getTextTracks: getTextTracks,
-        getTextTrack: getTextTrack,
-        addTextTrack: addTextTrack,
-        appendChild: appendChild,
-        removeChild: removeChild,
-        getVideoWidth: getVideoWidth,
-        getVideoHeight: getVideoHeight,
-        getVideoRelativeOffsetTop: getVideoRelativeOffsetTop,
-        getVideoRelativeOffsetLeft: getVideoRelativeOffsetLeft,
-        reset: reset
+        isSeeking,
+        getTime,
+        getPlaybackRate,
+        setPlaybackRate,
+        getPlayedRanges,
+        getEnded,
+        setStallState,
+        getElement,
+        setElement,
+        setSource,
+        getSource,
+        getTTMLRenderingDiv,
+        setTTMLRenderingDiv,
+        getPlaybackQuality,
+        addEventListener,
+        removeEventListener,
+        getReadyState,
+        getBufferRange,
+        getClientWidth,
+        getClientHeight,
+        getTextTracks,
+        getTextTrack,
+        addTextTrack,
+        appendChild,
+        removeChild,
+        getVideoWidth,
+        getVideoHeight,
+        getVideoRelativeOffsetTop,
+        getVideoRelativeOffsetLeft,
+        waitForReadyState,
+        reset
     };
 
     setup();

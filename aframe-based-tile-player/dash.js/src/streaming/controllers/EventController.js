@@ -43,7 +43,6 @@ function EventController() {
     const MPD_CALLBACK_SCHEME = 'urn:mpeg:dash:event:callback:2015';
     const MPD_CALLBACK_VALUE = 1;
 
-    const REFRESH_DELAY = 100;
     const REMAINING_EVENTS_THRESHOLD = 300;
 
     const EVENT_HANDLED_STATES = {
@@ -63,6 +62,7 @@ function EventController() {
         lastEventTimerCall,
         manifestUpdater,
         playbackController,
+        settings,
         eventHandlingInProgress,
         isStarted;
 
@@ -118,9 +118,10 @@ function EventController() {
         try {
             checkConfig();
             logger.debug('Start Event Controller');
-            if (!isStarted && !isNaN(REFRESH_DELAY)) {
+            const refreshDelay = settings.get().streaming.eventControllerRefreshDelay;
+            if (!isStarted && !isNaN(refreshDelay)) {
                 isStarted = true;
-                eventInterval = setInterval(_onEventTimer, REFRESH_DELAY);
+                eventInterval = setInterval(_onEventTimer, refreshDelay);
             }
         } catch (e) {
             throw e;
@@ -151,7 +152,6 @@ function EventController() {
                     }
                 }
             }
-            logger.debug(`Added ${values.length} inline events`);
         } catch (e) {
             throw e;
         }
@@ -337,7 +337,7 @@ function EventController() {
 
             };
 
-            _iterateAndTriggerCallback(events, callback());
+            _iterateAndTriggerCallback(events, callback);
 
         } catch (e) {
 
@@ -422,13 +422,13 @@ function EventController() {
                 return;
             }
 
-            if (event.eventStream.schemeIdUri === MPD_RELOAD_SCHEME && event.eventStream.value === MPD_RELOAD_VALUE) {
+            if (event.eventStream.schemeIdUri === MPD_RELOAD_SCHEME && event.eventStream.value == MPD_RELOAD_VALUE) {
                 if (event.duration !== 0 || event.presentationTimeDelta !== 0) { //If both are set to zero, it indicates the media is over at this point. Don't reload the manifest.
                     logger.debug(`Starting manifest refresh event ${eventId} at ${currentVideoTime}`);
                     _removeEvent(events, event);
                     _refreshManifest();
                 }
-            } else if (event.eventStream.schemeIdUri === MPD_CALLBACK_SCHEME && event.eventStream.value === MPD_CALLBACK_VALUE) {
+            } else if (event.eventStream.schemeIdUri === MPD_CALLBACK_SCHEME && event.eventStream.value == MPD_CALLBACK_VALUE) {
                 logger.debug(`Starting callback event ${eventId} at ${currentVideoTime}`);
                 _removeEvent(events, event);
                 _sendCallbackRequest(event.messageData);
@@ -454,7 +454,7 @@ function EventController() {
         const id = event.id;
 
         events[schemeIdUri] = events[schemeIdUri].filter((e) => {
-            return (value && e.eventStream.value && e.eventStream.value !== value) || (e.id !== id);
+            return (value && e.eventStream.value && e.eventStream.value !== value) || e.id !== id;
         });
 
         if (events[schemeIdUri].length === 0) {
@@ -504,14 +504,16 @@ function EventController() {
             if (!config) {
                 return;
             }
-
             if (config.manifestUpdater) {
                 manifestUpdater = config.manifestUpdater;
             }
-
             if (config.playbackController) {
                 playbackController = config.playbackController;
             }
+            if (config.settings) {
+                settings = config.settings;
+            }
+
         } catch (e) {
             throw e;
         }

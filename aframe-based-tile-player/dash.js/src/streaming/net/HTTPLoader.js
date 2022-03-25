@@ -39,6 +39,8 @@ import Debug from '../../core/Debug';
 import EventBus from '../../core/EventBus';
 import Events from '../../core/events/Events';
 import Settings from '../../core/Settings';
+import Constants from '../constants/Constants';
+import LowLatencyThroughputModel from '../models/LowLatencyThroughputModel';
 
 /**
  * @module HTTPLoader
@@ -56,7 +58,6 @@ function HTTPLoader(cfg) {
     const mediaPlayerModel = cfg.mediaPlayerModel;
     const requestModifier = cfg.requestModifier;
     const boxParser = cfg.boxParser;
-    const useFetch = cfg.useFetch || false;
     const errors = cfg.errors;
     const requestTimeout = cfg.requestTimeout || 0;
     const eventBus = EventBus(context).getInstance();
@@ -68,6 +69,7 @@ function HTTPLoader(cfg) {
         retryRequests,
         downloadErrorToRequestTypeMap,
         cmcdModel,
+        lowLatencyThroughputModel,
         logger;
 
     function setup() {
@@ -76,6 +78,7 @@ function HTTPLoader(cfg) {
         delayedRequests = [];
         retryRequests = [];
         cmcdModel = CmcdModel(context).getInstance();
+        lowLatencyThroughputModel = LowLatencyThroughputModel(context).getInstance();
 
         downloadErrorToRequestTypeMap = {
             [HTTPRequest.MPD_TYPE]: errors.DOWNLOAD_ERROR_ID_MANIFEST_CODE,
@@ -110,11 +113,12 @@ function HTTPLoader(cfg) {
             request.firstByteDate = request.firstByteDate || requestStartTime;
 
             if (!request.checkExistenceOnly) {
-                dashMetrics.addHttpRequest(request, httpRequest.response ? httpRequest.response.responseURL : null,
-                    httpRequest.response ? httpRequest.response.status : null,
-                    httpRequest.response && httpRequest.response.getAllResponseHeaders ? httpRequest.response.getAllResponseHeaders() :
-                        httpRequest.response ? httpRequest.response.responseHeaders : [],
-                    success ? traces : null);
+                const responseUrl = httpRequest.response ? httpRequest.response.responseURL : null;
+                const responseStatus = httpRequest.response ? httpRequest.response.status : null;
+                const responseHeaders = httpRequest.response && httpRequest.response.getAllResponseHeaders ? httpRequest.response.getAllResponseHeaders() :
+                    httpRequest.response ? httpRequest.response.responseHeaders : [];
+
+                dashMetrics.addHttpRequest(request, responseUrl, responseStatus, responseHeaders, success ? traces : null);
 
                 if (request.type === HTTPRequest.MPD_TYPE) {
                     dashMetrics.addManifestUpdate(request);
@@ -159,6 +163,10 @@ function HTTPLoader(cfg) {
                         internalLoad(config, remainingAttempts);
                     }, mediaPlayerModel.getRetryIntervalsForType(request.type));
                 } else {
+                    if (request.type === HTTPRequest.MSS_FRAGMENT_INFO_SEGMENT_TYPE) {
+                        return;
+                    }
+
                     errHandler.error(new DashJSError(downloadErrorToRequestTypeMap[request.type], request.url + ' is not available', {
                         request: request,
                         response: httpRequest.response
@@ -195,7 +203,8 @@ function HTTPLoader(cfg) {
                 traces.push({
                     s: lastTraceTime,
                     d: event.time ? event.time : currentTime.getTime() - lastTraceTime.getTime(),
-                    b: [event.loaded ? event.loaded - lastTraceReceivedCount : 0]
+                    b: [event.loaded ? event.loaded - lastTraceReceivedCount : 0],
+                    t: event.throughput
                 });
 
                 lastTraceTime = currentTime;
@@ -239,10 +248,14 @@ function HTTPLoader(cfg) {
         };
 
         let loader;
-        if (useFetch && window.fetch && request.responseType === 'arraybuffer' && request.type === HTTPRequest.MEDIA_SEGMENT_TYPE) {
+        if (settings.get().streaming.lowLatencyEnabled && window.fetch && request.responseType === 'arraybuffer' && request.type === HTTPRequest.MEDIA_SEGMENT_TYPE) {
             loader = FetchLoader(context).create({
                 requestModifier: requestModifier,
+                lowLatencyThroughputModel,
                 boxParser: boxParser
+            });
+            loader.setup({
+                dashMetrics
             });
         } else {
             loader = XHRLoader(context).create({
@@ -250,9 +263,18 @@ function HTTPLoader(cfg) {
             });
         }
 
+        let headers = null;
         let modifiedUrl = requestModifier.modifyRequestURL(request.url);
-        const additionalQueryParameter = _getAdditionalQueryParameter(request);
-        modifiedUrl = Utils.addAditionalQueryParameterToUrl(modifiedUrl, additionalQueryParameter);
+        if (settings.get().streaming.cmcd && settings.get().streaming.cmcd.enabled) {
+            const cmcdMode = settings.get().streaming.cmcd.mode;
+            if (cmcdMode === Constants.CMCD_MODE_QUERY) {
+                const additionalQueryParameter = _getAdditionalQueryParameter(request);
+                modifiedUrl = Utils.addAditionalQueryParameterToUrl(modifiedUrl, additionalQueryParameter);
+            } else if (cmcdMode === Constants.CMCD_MODE_HEADER) {
+                headers = cmcdModel.getHeaderParameters(request);
+            }
+        }
+        request.url = modifiedUrl;
         const verb = request.checkExistenceOnly ? HTTPRequest.HEAD : HTTPRequest.GET;
         const withCredentials = mediaPlayerModel.getXHRWithCredentialsForType(request.type);
 
@@ -269,7 +291,8 @@ function HTTPLoader(cfg) {
             onabort: onabort,
             ontimeout: ontimeout,
             loader: loader,
-            timeout: requestTimeout
+            timeout: requestTimeout,
+            headers: headers
         };
 
         // Adds the ability to delay single fragment loading time to control buffer.
@@ -355,6 +378,11 @@ function HTTPLoader(cfg) {
         delayedRequests = [];
 
         requests.forEach(x => {
+            // MSS patch: ignore FragmentInfo requests
+            if (x.request.type === HTTPRequest.MSS_FRAGMENT_INFO_SEGMENT_TYPE) {
+                return;
+            }
+
             // abort will trigger onloadend which we don't want
             // when deliberately aborting inflight requests -
             // set them to undefined so they are not called

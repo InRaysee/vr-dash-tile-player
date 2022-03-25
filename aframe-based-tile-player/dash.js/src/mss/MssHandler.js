@@ -36,7 +36,7 @@ import MssFragmentProcessor from './MssFragmentProcessor';
 import MssParser from './parser/MssParser';
 import MssErrors from './errors/MssErrors';
 import DashJSError from '../streaming/vo/DashJSError';
-import InitCache from '../streaming/utils/InitCache';
+import {HTTPRequest} from '../streaming/vo/metrics/HTTPRequest';
 
 function MssHandler(config) {
 
@@ -63,12 +63,10 @@ function MssHandler(config) {
     });
     let mssParser,
         fragmentInfoControllers,
-        initCache,
         instance;
 
     function setup() {
         fragmentInfoControllers = [];
-        initCache = InitCache(context).getInstance();
     }
 
     function getStreamProcessor(type) {
@@ -102,12 +100,12 @@ function MssHandler(config) {
 
     function startFragmentInfoControllers() {
 
-        // Create MssFragmentInfoControllers for each StreamProcessor of active stream (only for audio, video or fragmentedText)
+        // Create MssFragmentInfoControllers for each StreamProcessor of active stream (only for audio, video or text)
         let processors = streamController.getActiveStreamProcessors();
         processors.forEach(function (processor) {
             if (processor.getType() === constants.VIDEO ||
                 processor.getType() === constants.AUDIO ||
-                processor.getType() === constants.FRAGMENTED_TEXT) {
+                processor.getType() === constants.TEXT) {
 
                 let fragmentInfoController = getFragmentInfoController(processor.getType());
                 if (!fragmentInfoController) {
@@ -176,7 +174,7 @@ function MssHandler(config) {
         // Process moof to transcode it from MSS to DASH (or to update segment timeline for SegmentInfo fragments)
         mssFragmentProcessor.processFragment(e, streamProcessor);
 
-        if (e.request.type === 'FragmentInfoSegment') {
+        if (e.request.type === HTTPRequest.MSS_FRAGMENT_INFO_SEGMENT_TYPE) {
             // If FragmentInfo loaded, then notify corresponding MssFragmentInfoController
             let fragmentInfoController = getFragmentInfoController(e.request.mediaType);
             if (fragmentInfoController) {
@@ -186,7 +184,7 @@ function MssHandler(config) {
 
         // Start MssFragmentInfoControllers in case of start-over streams
         let manifestInfo = e.request.mediaInfo.streamInfo.manifestInfo;
-        if (!manifestInfo.isDynamic && manifestInfo.DVRWindowSize !== Infinity) {
+        if (!manifestInfo.isDynamic && manifestInfo.dvrWindowSize !== Infinity) {
             startFragmentInfoControllers();
         }
     }

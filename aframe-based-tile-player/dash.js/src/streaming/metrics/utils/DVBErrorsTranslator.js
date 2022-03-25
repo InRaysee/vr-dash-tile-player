@@ -90,6 +90,7 @@ function DVBErrorsTranslator(config) {
 
     function handleHttpMetric(vo) {
         if ((vo.responsecode === 0) ||      // connection failure - unknown
+                (vo.responsecode == null) || // Generated on .catch() and when uninitialised
                 (vo.responsecode >= 400) || // HTTP error status code
                 (vo.responsecode < 100) ||  // unknown status codes
                 (vo.responsecode >= 600)) { // unknown status codes
@@ -167,11 +168,9 @@ function DVBErrorsTranslator(config) {
     }
 
     instance = {
-        initialise: initialise,
-        reset:      reset
+        initialise,
+        reset
     };
-
-    initialise();
 
     return instance;
 }

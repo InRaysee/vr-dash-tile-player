@@ -43,6 +43,7 @@ class Representation {
         this.segmentInfoType = null;
         this.initialization = null;
         this.codecs = null;
+        this.mimeType = null;
         this.codecPrivateData = null;
         this.segmentDuration = NaN;
         this.timescale = 1;
@@ -52,8 +53,8 @@ class Representation {
         this.presentationTimeOffset = 0;
         // Set the source buffer timeOffset to this
         this.MSETimeOffset = NaN;
-        this.segmentAvailabilityRange = null;
-        this.availableSegmentsNumber = 0;
+        // The information we need in the DashHandler to determine whether the last segment has been loaded
+        this.mediaFinishedInformation = { numberOfSegments: 0, mediaTimeOfLastSignaledSegment: NaN };
         this.bandwidth = NaN;
         this.width = NaN;
         this.height = NaN;

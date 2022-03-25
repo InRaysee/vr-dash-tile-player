@@ -67,20 +67,6 @@ class Constants {
         this.TEXT = 'text';
 
         /**
-         *  @constant {string} FRAGMENTED_TEXT Fragmented text media type
-         *  @memberof Constants#
-         *  @static
-         */
-        this.FRAGMENTED_TEXT = 'fragmentedText';
-
-        /**
-         *  @constant {string} EMBEDDED_TEXT Embedded text media type
-         *  @memberof Constants#
-         *  @static
-         */
-        this.EMBEDDED_TEXT = 'embeddedText';
-
-        /**
          *  @constant {string} MUXED Muxed (video/audio in the same chunk) media type
          *  @memberof Constants#
          *  @static
@@ -172,6 +158,13 @@ class Constants {
         this.ABR_FETCH_THROUGHPUT_CALCULATION_MOOF_PARSING = 'abrFetchThroughputCalculationMoofParsing';
 
         /**
+        *  @constant {string} ABR_FETCH_THROUGHPUT_CALCULATION_AAST Throughput calculation based on adjusted availability start time in low latency mode
+        *  @memberof Constants#
+        *  @static
+        */
+        this.ABR_FETCH_THROUGHPUT_CALCULATION_AAST = 'abrFetchThroughputCalculationAAST';
+
+        /**
          *  @constant {string} LIVE_CATCHUP_MODE_DEFAULT Throughput calculation based on moof parsing
          *  @memberof Constants#
          *  @static
@@ -228,6 +221,13 @@ class Constants {
         this.TRACK_SWITCH_MODE_NEVER_REPLACE = 'neverReplace';
 
         /**
+         *  @constant {string} TRACK_SELECTION_MODE_FIRST_TRACK makes the player select the first track found in the manifest.
+         *  @memberof Constants#
+         *  @static
+         */
+        this.TRACK_SELECTION_MODE_FIRST_TRACK = 'firstTrack';
+
+        /**
          *  @constant {string} TRACK_SELECTION_MODE_HIGHEST_BITRATE makes the player select the track with a highest bitrate. This mode is a default mode.
          *  @memberof Constants#
          *  @static
@@ -248,6 +248,28 @@ class Constants {
          */
         this.TRACK_SELECTION_MODE_WIDEST_RANGE = 'widestRange';
 
+        /**
+         *  @constant {string} TRACK_SELECTION_MODE_WIDEST_RANGE makes the player select the track with the highest selectionPriority as defined in the manifest
+         *  @memberof Constants#
+         *  @static
+         */
+        this.TRACK_SELECTION_MODE_HIGHEST_SELECTION_PRIORITY = 'highestSelectionPriority';
+
+        /**
+         *  @constant {string} CMCD_MODE_QUERY specifies to attach CMCD metrics as query parameters.
+         *  @memberof Constants#
+         *  @static
+         */
+        this.CMCD_MODE_QUERY = 'query';
+
+        /**
+         *  @constant {string} CMCD_MODE_HEADER specifies to attach CMCD metrics as HTTP headers.
+         *  @memberof Constants#
+         *  @static
+         */
+        this.CMCD_MODE_HEADER = 'header';
+
+
         this.LOCATION = 'Location';
         this.INITIALIZE = 'initialize';
         this.TEXT_SHOWING = 'showing';
@@ -263,6 +285,13 @@ class Constants {
         this.ARRAY_BUFFER = 'ArrayBuffer';
         this.DVB_REPORTING_URL = 'dvb:reportingUrl';
         this.DVB_PROBABILITY = 'dvb:probability';
+        this.VIDEO_ELEMENT_READY_STATES = {
+            HAVE_NOTHING: 0,
+            HAVE_METADATA: 1,
+            HAVE_CURRENT_DATA: 2,
+            HAVE_FUTURE_DATA: 3,
+            HAVE_ENOUGH_DATA: 4
+        };
     }
 
     constructor() {

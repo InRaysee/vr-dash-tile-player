@@ -34,7 +34,7 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
 
     $scope.selectedItem = {  // Save the selected media source
         type:"json",
-        value:"http://localhost/CMPVP907/aframeVP907.json"
+        value:"http://115.156.159.94:8800/CMPVP907/aframeVP907.json"
     };
     $scope.optionButton = "Show Options";  // Save the state of option button
     $scope.selectedRule = "FOVRule";  // Save the selected media source
@@ -146,7 +146,7 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
         },
         {
             name:"SVOD",
-            json:"http://222.20.77.111/processed/CMPVP907/aframeVP907.json",
+            json:"http://115.156.159.94:8800/CMPVP907/aframeVP907.json",
         },
         {
             name:"LIVE",
@@ -479,14 +479,18 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
                             'abr': {
                                 'useDefaultABRRules': false
                             },
-                            'bufferToKeep': $scope.playerBufferToKeep,
-                            'stableBufferTime': $scope.playerStableBufferTime,
-                            'bufferTimeAtTopQuality': $scope.playerBufferTimeAtTopQuality,
-                            'fastswitchenabled': true,
-                            'liveDelay': 0, 
+                            'buffer': {
+                                'bufferToKeep': $scope.playerBufferToKeep,
+                                'stableBufferTime': $scope.playerStableBufferTime,
+                                'bufferTimeAtTopQuality': $scope.playerBufferTimeAtTopQuality,
+                                'fastSwitchEnabled': true
+                            },
+                            'delay': {
+                                'liveDelay': 0
+                            },
                             'liveCatchup': {
                                 'enabled': true,
-                                    'minDrift': $scope.playerMinDrift
+                                'minDrift': $scope.playerMinDrift
                             }
                         }
                     });

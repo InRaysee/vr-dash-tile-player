@@ -47,7 +47,7 @@ function MssParser(config) {
     const settings = config.settings;
 
     const DEFAULT_TIME_SCALE = 10000000.0;
-    const SUPPORTED_CODECS = ['AAC', 'AACL', 'AVC1', 'H264', 'TTML', 'DFXP'];
+    const SUPPORTED_CODECS = ['AAC', 'AACL', 'AACH', 'AACP', 'AVC1', 'H264', 'TTML', 'DFXP'];
     // MPEG-DASH Role and accessibility mapping for text tracks according to ETSI TS 103 285 v1.1.1 (section 7.1.2)
     const ROLE = {
         'CAPT': 'main',
@@ -121,7 +121,6 @@ function MssParser(config) {
         let segmentTemplate;
         let qualityLevels,
             representation,
-            segments,
             i,
             index;
 
@@ -192,8 +191,6 @@ function MssParser(config) {
 
         // Set SegmentTemplate
         adaptationSet.SegmentTemplate = segmentTemplate;
-
-        segments = segmentTemplate.SegmentTimeline.S_asArray;
 
         return adaptationSet;
     }
@@ -353,6 +350,9 @@ function MssParser(config) {
 
         segmentTemplate.SegmentTimeline = mapSegmentTimeline(streamIndex, segmentTemplate.timescale);
 
+        // Patch: set availabilityTimeOffset to Infinity since segments are available as long as they are present in timeline
+        segmentTemplate.availabilityTimeOffset = 'INF';
+
         return segmentTemplate;
     }
 
@@ -363,7 +363,7 @@ function MssParser(config) {
         let segment,
             prevSegment,
             tManifest,
-            i,j,r;
+            i, j, r;
         let duration = 0;
 
         for (i = 0; i < chunks.length; i++) {
@@ -426,7 +426,7 @@ function MssParser(config) {
                     segment.t = prevSegment.t + prevSegment.d;
                     segment.d = prevSegment.d;
                     if (prevSegment.tManifest) {
-                        segment.tManifest  = BigInt(prevSegment.tManifest).add(BigInt(prevSegment.d)).toString();
+                        segment.tManifest = BigInt(prevSegment.tManifest).add(BigInt(prevSegment.d)).toString();
                     }
                     duration += segment.d;
                     segments.push(segment);
@@ -485,11 +485,11 @@ function MssParser(config) {
         // Parse PlayReady header
 
         // Length - 32 bits (LE format)
-        length = (prHeader[i + 3] << 24) + (prHeader[i + 2] << 16) + (prHeader[i + 1] << 8) + prHeader[i];
+        length = (prHeader[i + 3] << 24) + (prHeader[i + 2] << 16) + (prHeader[i + 1] << 8) + prHeader[i]; // eslint-disable-line
         i += 4;
 
         // Record count - 16 bits (LE format)
-        recordCount = (prHeader[i + 1] << 8) + prHeader[i];
+        recordCount = (prHeader[i + 1] << 8) + prHeader[i]; // eslint-disable-line
         i += 2;
 
         // Parse records
@@ -571,7 +571,7 @@ function MssParser(config) {
         i += 8;
 
         // Set SystemID ('edef8ba9-79d6-4ace-a3c8-27dcd51d21ed')
-        pssh.set([0xed, 0xef, 0x8b, 0xa9,  0x79, 0xd6, 0x4a, 0xce, 0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed], i);
+        pssh.set([0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce, 0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed], i);
         i += 16;
 
         // Set data length value
@@ -592,7 +592,7 @@ function MssParser(config) {
         return widevineCP;
     }
 
-    function processManifest(xmlDoc, manifestLoadedTime) {
+    function processManifest(xmlDoc) {
         const manifest = {};
         const contentProtections = [];
         const smoothStreamingMedia = xmlDoc.getElementsByTagName('SmoothStreamingMedia')[0];
@@ -613,7 +613,7 @@ function MssParser(config) {
         manifest.protocol = 'MSS';
         manifest.profiles = 'urn:mpeg:dash:profile:isoff-live:2011';
         manifest.type = getAttributeAsBoolean(smoothStreamingMedia, 'IsLive') ? 'dynamic' : 'static';
-        timescale =  smoothStreamingMedia.getAttribute('TimeScale');
+        timescale = smoothStreamingMedia.getAttribute('TimeScale');
         manifest.timescale = timescale ? parseFloat(timescale) : DEFAULT_TIME_SCALE;
         let dvrWindowLength = parseFloat(smoothStreamingMedia.getAttribute('DVRWindowLength'));
         // If the DVRWindowLength field is omitted for a live presentation or set to 0, the DVR window is effectively infinite
@@ -647,6 +647,7 @@ function MssParser(config) {
             manifest.refreshManifestOnSwitchTrack = true; // Refresh manifest when switching tracks
             manifest.doNotUpdateDVRWindowOnBufferUpdated = true; // DVRWindow is update by MssFragmentMoofPocessor based on tfrf boxes
             manifest.ignorePostponeTimePeriod = true; // Never update manifest
+            manifest.availabilityStartTime = new Date(null); // Returns 1970
         }
 
         // Map period node to manifest root node
@@ -705,12 +706,7 @@ function MssParser(config) {
                 // Set minBufferTime to one segment duration
                 manifest.minBufferTime = segmentDuration;
 
-                if (manifest.type === 'dynamic' ) {
-                    // Set availabilityStartTime
-                    segments = adaptations[i].SegmentTemplate.SegmentTimeline.S_asArray;
-                    let endTime = (segments[segments.length - 1].t + segments[segments.length - 1].d) / adaptations[i].SegmentTemplate.timescale * 1000;
-                    manifest.availabilityStartTime = new Date(manifestLoadedTime.getTime() - endTime);
-
+                if (manifest.type === 'dynamic') {
                     // Match timeShiftBufferDepth to video segment timeline duration
                     if (manifest.timeShiftBufferDepth > 0 &&
                         manifest.timeShiftBufferDepth !== Infinity &&
@@ -727,10 +723,11 @@ function MssParser(config) {
         // In case of live streams:
         // 1- configure player buffering properties according to target live delay
         // 2- adapt live delay and then buffers length in case timeShiftBufferDepth is too small compared to target live delay (see PlaybackController.computeLiveDelay())
+        // 3- Set retry attempts and intervals for FragmentInfo requests
         if (manifest.type === 'dynamic') {
             let targetLiveDelay = mediaPlayerModel.getLiveDelay();
             if (!targetLiveDelay) {
-                const liveDelayFragmentCount = settings.get().streaming.liveDelayFragmentCount !== null && !isNaN(settings.get().streaming.liveDelayFragmentCount) ? settings.get().streaming.liveDelayFragmentCount : 4;
+                const liveDelayFragmentCount = settings.get().streaming.delay.liveDelayFragmentCount !== null && !isNaN(settings.get().streaming.delay.liveDelayFragmentCount) ? settings.get().streaming.delay.liveDelayFragmentCount : 4;
                 targetLiveDelay = segmentDuration * liveDelayFragmentCount;
             }
             let targetDelayCapping = Math.max(manifest.timeShiftBufferDepth - 10/*END_OF_PLAYLIST_PADDING*/, manifest.timeShiftBufferDepth / 2);
@@ -741,21 +738,33 @@ function MssParser(config) {
             // Store initial buffer settings
             initialBufferSettings = {
                 'streaming': {
-                    'calcSegmentAvailabilityRangeFromTimeline': settings.get().streaming.calcSegmentAvailabilityRangeFromTimeline,
-                    'liveDelay': settings.get().streaming.liveDelay,
-                    'stableBufferTime': settings.get().streaming.stableBufferTime,
-                    'bufferTimeAtTopQuality': settings.get().streaming.bufferTimeAtTopQuality,
-                    'bufferTimeAtTopQualityLongForm': settings.get().streaming.bufferTimeAtTopQualityLongForm
+                    'buffer': {
+                        'stableBufferTime': settings.get().streaming.buffer.stableBufferTime,
+                        'bufferTimeAtTopQuality': settings.get().streaming.buffer.bufferTimeAtTopQuality,
+                        'bufferTimeAtTopQualityLongForm': settings.get().streaming.buffer.bufferTimeAtTopQualityLongForm
+                    },
+                    'timeShiftBuffer': {
+                        calcFromSegmentTimeline: settings.get().streaming.timeShiftBuffer.calcFromSegmentTimeline
+                    },
+                    'delay': {
+                        'liveDelay': settings.get().streaming.delay.liveDelay
+                    }
                 }
             };
 
             settings.update({
                 'streaming': {
-                    'calcSegmentAvailabilityRangeFromTimeline': true,
-                    'liveDelay': liveDelay,
-                    'stableBufferTime': bufferTime,
-                    'bufferTimeAtTopQuality': bufferTime,
-                    'bufferTimeAtTopQualityLongForm': bufferTime
+                    'buffer': {
+                        'stableBufferTime': bufferTime,
+                        'bufferTimeAtTopQuality': bufferTime,
+                        'bufferTimeAtTopQualityLongForm': bufferTime
+                    },
+                    'timeShiftBuffer': {
+                        calcFromSegmentTimeline: true
+                    },
+                    'delay': {
+                        'liveDelay': liveDelay
+                    }
                 }
             });
         }

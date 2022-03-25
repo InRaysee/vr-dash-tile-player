@@ -31,6 +31,7 @@
 
 import Segment from './../vo/Segment';
 
+
 function zeroPadToLength(numStr, minStrLength) {
     while (numStr.length < minStrLength) {
         numStr = '0' + numStr;
@@ -128,7 +129,7 @@ export function replaceTokenForTemplate(url, token, value) {
     }
 }
 
-function getSegment(representation, duration, presentationStartTime, mediaStartTime, availabilityStartTime,
+function getSegment(representation, duration, presentationStartTime, mediaStartTime,
                     timelineConverter, presentationEndTime, isDynamic, index) {
     let seg = new Segment();
 
@@ -136,30 +137,36 @@ function getSegment(representation, duration, presentationStartTime, mediaStartT
     seg.duration = duration;
     seg.presentationStartTime = presentationStartTime;
     seg.mediaStartTime = mediaStartTime;
-    seg.availabilityStartTime = availabilityStartTime;
-    seg.availabilityEndTime = timelineConverter.calcAvailabilityEndTimeFromPresentationTime(presentationEndTime, representation.adaptation.period.mpd, isDynamic);
+    seg.availabilityStartTime = timelineConverter.calcAvailabilityStartTimeFromPresentationTime(presentationEndTime, representation, isDynamic);
+    seg.availabilityEndTime = timelineConverter.calcAvailabilityEndTimeFromPresentationTime(presentationEndTime + duration, representation, isDynamic);
     seg.wallStartTime = timelineConverter.calcWallTimeForSegment(seg, isDynamic);
     seg.replacementNumber = getNumberForSegment(seg, index);
-    seg.availabilityIdx = index;
+    seg.index = index;
 
     return seg;
 }
 
 function isSegmentAvailable(timelineConverter, representation, segment, isDynamic) {
-    const periodEnd = timelineConverter.getPeriodEnd(representation, isDynamic);
-    const periodRelativeEnd = timelineConverter.calcPeriodRelativeTimeFromMpdRelativeTime(representation, periodEnd);
+    const voPeriod = representation.adaptation.period;
 
-    const segmentTime = timelineConverter.calcPeriodRelativeTimeFromMpdRelativeTime(representation, segment.presentationStartTime);
-    if (segmentTime >= periodRelativeEnd) {
-        if (isDynamic) {
-            // segment is not available in current period, but it may be segment available in another period that current one (in DVR window)
-            // if not (time > segmentAvailabilityRange.end), then return false
-            if (representation.segmentAvailabilityRange && segment.presentationStartTime >= representation.segmentAvailabilityRange.end) {
-                return false;
-            }
-        } else {
-            return false;
+    // Avoid requesting segments that overlap the period boundary
+    if (isFinite(voPeriod.duration) && voPeriod.start + voPeriod.duration <= segment.presentationStartTime) {
+        return false;
+    }
+
+    if (isDynamic) {
+
+        if (representation.availabilityTimeOffset === 'INF') {
+            return true;
         }
+
+        // For dynamic manifests we check if the presentation start time + duration is included in the availability window
+        // SAST = Period@start + seg@presentationStartTime + seg@duration
+        // ASAST = SAST - ATO
+        // SAET = SAST + TSBD + seg@duration
+        // refTime serves as an anchor time to compare the availability time of the segments against.
+        const refTime = timelineConverter.getClientReferenceTime();
+        return segment.availabilityStartTime.getTime() <= refTime && (!isFinite(segment.availabilityEndTime) || segment.availabilityEndTime.getTime() >= refTime);
     }
 
     return true;
@@ -169,6 +176,7 @@ export function getIndexBasedSegment(timelineConverter, isDynamic, representatio
     let duration,
         presentationStartTime,
         presentationEndTime;
+
 
     duration = representation.segmentDuration;
 
@@ -184,9 +192,9 @@ export function getIndexBasedSegment(timelineConverter, isDynamic, representatio
     presentationStartTime = parseFloat((representation.adaptation.period.start + (index * duration)).toFixed(5));
     presentationEndTime = parseFloat((presentationStartTime + duration).toFixed(5));
 
-    const segment = getSegment(representation, duration, presentationStartTime,
-        timelineConverter.calcMediaTimeFromPresentationTime(presentationStartTime, representation),
-        timelineConverter.calcAvailabilityStartTimeFromPresentationTime(presentationStartTime, representation.adaptation.period.mpd, isDynamic),
+    const mediaTime = timelineConverter.calcMediaTimeFromPresentationTime(presentationStartTime, representation);
+
+    const segment = getSegment(representation, duration, presentationStartTime, mediaTime,
         timelineConverter, presentationEndTime, isDynamic, index);
 
     if (!isSegmentAvailable(timelineConverter, representation, segment, isDynamic)) {
@@ -198,7 +206,7 @@ export function getIndexBasedSegment(timelineConverter, isDynamic, representatio
 
 export function getTimeBasedSegment(timelineConverter, isDynamic, representation, time, duration, fTimescale, url, range, index, tManifest) {
     const scaledTime = time / fTimescale;
-    const scaledDuration = Math.min(duration / fTimescale, representation.adaptation.period.mpd.maxSegmentDuration);
+    const scaledDuration = duration / fTimescale;
 
     let presentationStartTime,
         presentationEndTime,
@@ -209,7 +217,6 @@ export function getTimeBasedSegment(timelineConverter, isDynamic, representation
 
     seg = getSegment(representation, scaledDuration, presentationStartTime,
         scaledTime,
-        representation.adaptation.period.mpd.manifest.loadedTime,
         timelineConverter, presentationEndTime, isDynamic, index);
 
     if (!isSegmentAvailable(timelineConverter, representation, seg, isDynamic)) {

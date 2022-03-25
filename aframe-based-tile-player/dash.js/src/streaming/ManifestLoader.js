@@ -68,7 +68,6 @@ function ManifestLoader(config) {
             dashMetrics: config.dashMetrics,
             mediaPlayerModel: config.mediaPlayerModel,
             requestModifier: config.requestModifier,
-            useFetch: config.settings.get().streaming.lowLatencyEnabled,
             urlUtils: urlUtils,
             constants: Constants,
             dashConstants: DashConstants,
@@ -225,6 +224,10 @@ function ManifestLoader(config) {
     function reset() {
         eventBus.off(Events.XLINK_READY, onXlinkReady, instance);
 
+        if (mssHandler) {
+            mssHandler.reset();
+        }
+
         if (xlinkController) {
             xlinkController.reset();
             xlinkController = null;
@@ -233,10 +236,6 @@ function ManifestLoader(config) {
         if (urlLoader) {
             urlLoader.abort();
             urlLoader = null;
-        }
-
-        if (mssHandler) {
-            mssHandler.reset();
         }
     }
 
