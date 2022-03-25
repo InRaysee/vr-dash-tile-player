@@ -116,6 +116,4 @@ mp4dash --output-dir=audio --mpd-name=audio.mpd f_audio.mp4
 }
 ```
 
-( All processed dataset in HUST: http://222.20.77.111/processed )
-
 ( Precessed dataset CMPVP907 in Cloud Drive: https://pan.baidu.com/s/1LAku9Pq6d6_mP6jntEFkGw Password：hust )
