@@ -1,5 +1,7 @@
 # vr-dash-tile-player
 
+Noted that this project has stopped maintaining except for necessary bug fixes and special updates. We would always let the issues open and welcome all to come up with questions. Thanks for all your support and inspiration!
+
 ## Tools and Frameworks we use
 
 1. dash.js - For adaptive bitrate streaming via DASH.
