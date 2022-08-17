@@ -118,6 +118,6 @@ mp4dash --output-dir=audio --mpd-name=audio.mpd f_audio.mp4
 }
 ```
 
-( Precessed dataset CMPVP907 in Baidu Cloud Drive: https://pan.baidu.com/s/1LAku9Pq6d6_mP6jntEFkGw Password：hust )
+( Preprocessed dataset CMPVP907 in Baidu Cloud Drive: https://pan.baidu.com/s/1LAku9Pq6d6_mP6jntEFkGw Password：hust )
 
-( Precessed dataset CQ07 in Google Cloud Drive: https://drive.google.com/file/d/1yQpNv4Mpe1OQzgXb6epJdvo44YGX3jDH/view?usp=sharing )
+( Preprocessed dataset CQ07 in Google Cloud Drive: https://drive.google.com/file/d/1yQpNv4Mpe1OQzgXb6epJdvo44YGX3jDH/view?usp=sharing )
