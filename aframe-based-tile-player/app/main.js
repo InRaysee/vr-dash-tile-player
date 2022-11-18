@@ -34,7 +34,7 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
 
     $scope.selectedItem = {  // Save the selected media source
         type:"json",
-        value:"http://115.156.159.94:8800/CMPVP907/aframeVP907.json"
+        value:"http://localhost:8080/datasets/CQ07/aframeCQ07.json"
     };
     $scope.optionButton = "Show Options";  // Save the state of option button
     $scope.selectedRule = "FOVRule";  // Save the selected media source
@@ -141,12 +141,12 @@ app.controller('DashController', ['$scope','$interval', function ($scope, $inter
     $scope.content_curTile_bias = 0.1;  // [For computing QoE] bias of tiles for computing content score
     $scope.availableStreams = [  // [For setting up the media source] All the available preset media sources
         {
-            name:"LVOD",
-            json:"http://localhost/CMPVP907/aframeVP907.json",
+            name:"VP907",
+            json:"http://localhost:8080/datasets/CMPVP907/aframeVP907.json",
         },
         {
-            name:"SVOD",
-            json:"http://115.156.159.94:8800/CMPVP907/aframeVP907.json",
+            name:"CQ07",
+            json:"http://localhost:8080/datasets/CQ07/aframeCQ07.json",
         },
         {
             name:"LIVE",
