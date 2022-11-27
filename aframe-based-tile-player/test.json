@@ -1,0 +1,17 @@
+{
+	"baseUrl": "",
+	"face": 6,
+	"row": 1,
+	"col": 1,
+	"duration": 2,
+    "tiles": [
+		[[{"src": "http://10.12.159.73:8080/face0/stream.mpd", "width": "960", "height": "960", "x": 480, "y": 0, "z": 0, "rx": 0, "ry": 270, "rz": 0}]],
+		[[{"src": "http://10.12.159.73:8080/face1/stream.mpd", "width": "960", "height": "960", "x": -480, "y": 0, "z": 0, "rx": 0, "ry": 90, "rz": 0}]],
+		[[{"src": "http://10.12.159.73:8080/face2/stream.mpd", "width": "960", "height": "960", "x": 0, "y": 480, "z": 0, "rx": 90, "ry": 180, "rz": 0}]],
+		[[{"src": "http://10.12.159.74:8080/face3/stream.mpd", "width": "960", "height": "960", "x": 0, "y": -480, "z": 0, "rx": -90, "ry": 180, "rz": 0}]],
+		[[{"src": "http://10.12.159.74:8080/face4/stream.mpd", "width": "960", "height": "960", "x": 0, "y": 0, "z": -480, "rx": 0, "ry": 0, "rz": 0}]],
+		[[{"src": "http://10.12.159.74:8080/face5/stream.mpd", "width": "960", "height": "960", "x": 0, "y": 0, "z": 480, "rx": 0, "ry": 180, "rz": 0}]]
+	],
+	"audio": "",
+	"ssresults": ""
+}
