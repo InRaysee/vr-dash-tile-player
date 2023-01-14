@@ -30,7 +30,7 @@ Default: Using FOVRule as default. If need please change the config in HTML page
 
 #### Player over aframe
 
-1. Run the HTML file via HTTP address (e.g., http://localhost/vr-dash-tile-player/Index.html).
+1. Run the HTML file via HTTP address (e.g., http://localhost:8080/vr-dash-tile-player/aframe-based-tile-player/index.html).
 2. Confirm the location of JSON file, the Mode (VOD/LIVE) and the Rule(FOVRule/HighestBitrateRule/FOVContentRule/ThroughputRule) you want to use in HTML page, then click "link".
 3. Click "aframe" to load aframe page.
 4. Click "load" to initialize MediaPlayer according to JSON description.
